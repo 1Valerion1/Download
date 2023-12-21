@@ -22,7 +22,7 @@ public interface StorageService {
 
     void deleteAll();
 
-    ResponseEntity<String> sendFileToOtherService(String fileName);
+    String sendFileToOtherService(MultipartFile file);
 
     Map<String, Object> handleFileUpload(MultipartFile file);
 }

@@ -4,6 +4,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpResponse;
+import java.net.http.HttpRequest;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -17,11 +22,12 @@ import org.download.exception.InvalidFileException;
 import org.download.exception.StorageException;
 import org.download.exception.StorageFileNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.*;
-import org.springframework.scheduling.annotation.Async;
+
 import org.springframework.stereotype.Service;
 import org.springframework.util.FileSystemUtils;
 import org.springframework.util.LinkedMultiValueMap;
@@ -69,30 +75,26 @@ public class FileSystemStorageService implements StorageService {
         }
     }
 
-    @Async
     @Override
-    public ResponseEntity<String> sendFileToOtherService(String fileName) {
+    public String sendFileToOtherService(MultipartFile file) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            String url = "http://localhost:89/post_text";
+            HttpClient httpClient = HttpClient.newHttpClient();
 
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            FileSystemResource value = new FileSystemResource(new File(load(fileName).toString()));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "multipart/form-data")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(file.getBytes()))
+                    .build();
 
-            body.add("file", value);
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+            return response.body();
 
-            ResponseEntity<String> response =
-                    restTemplate.exchange("http://other-microservice-url/path/to/tdf-idf/service",
-                            HttpMethod.POST, requestEntity, String.class);
-
-            return response;
         } catch (Exception e) {
             throw new RuntimeException("Failed to send the file to the other service.", e);
         }
     }
-
     @Override
     public void store(MultipartFile file) {
         try {
