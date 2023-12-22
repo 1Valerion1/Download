@@ -5,19 +5,21 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.download.exception.InvalidFileException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.ParameterizedTypeReference;
+
 import org.springframework.core.io.Resource;
 import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestClientException;
+
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,7 +28,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import org.download.exception.StorageFileNotFoundException;
 import org.download.services.StorageService;
-import org.springframework.web.util.UriComponentsBuilder;
+
 
 @RestController
 @CrossOrigin("*")
@@ -37,8 +39,6 @@ public class FileUploadController {
     private RestTemplate restTemplate;
     @Autowired
     private RabbitMQPublisher rabbitMQPublisher;
-    @Autowired
-    private DictionaryPublisher dictionaryPublisher;
 
     @Autowired
     private RabbitMQConsumer rabbitMQConsumer;
@@ -64,83 +64,70 @@ public class FileUploadController {
         return "uploadForm";
     }
 
-    @PostMapping("/upload")
-    public ResponseEntity<Map<String, Object>> handleFileUpload(@RequestParam("file") MultipartFile file,
-                                                                RedirectAttributes redirectAttributes) {
+    @CrossOrigin(origins = "http://localhost:5173")
+    @Async
+    @PostMapping("/analyse")
+    public CompletableFuture<ResponseEntity<String>> handleFileUpload(@RequestParam("file") MultipartFile file) {
         logger.info("Handling handleFileUpload request");
 
-        Map<String, Object> response = storageService.handleFileUpload(file);
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, Object> response = storageService.handleFileUpload(file);
+            HttpStatus status = HttpStatus.OK;
 
-        Object statusObject = response.get("status");
-        HttpStatus status;
+            if (response.get("status") != null && response.get("status").equals("success")) {
+                try {
+                    Integer id = getNextId();
+                    rabbitMQPublisher.sendFileToQueue(id, file.getBytes(), file.getOriginalFilename());
+                    rabbitMQConsumer.listenForResultsAndSendToFrontend();
 
-        if(statusObject != null && statusObject.equals("success")) {
-            status = HttpStatus.OK;
-            // Отправка содержимого файла в очередь для обработки
-            try {
-                rabbitMQPublisher.sendFileToQueue(file.getBytes(),file.getOriginalFilename());
-
-                Map<String, Double> data = new HashMap<>();
-                data.put("top", 0.5);
-                data.put("chess", 0.3);
-                dictionaryPublisher.publishDictionary(data);
-                rabbitMQConsumer.listenForResultsAndSendToFrontend();
-
-            } catch (IOException e) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to send file to processing queue");
-            }
-
-        } else if (statusObject != null && statusObject.equals("error")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, (String) response.get("message"));
-        } else {
-            status = HttpStatus.BAD_REQUEST;
-        }
-        return new ResponseEntity<>(response, status);
-    }
-
-
-    @PostMapping("/send")
-    public String sendFile(MultipartFile file) {
-        try {
-            logger.info("Handling sendFileToOtherService request" + file.getOriginalFilename());
-
-            return storageService.sendFileToOtherService(file);
-
-        } catch (HttpStatusCodeException e){
-            logger.error("HttpStatusCodeException occurred: " + e.getMessage());
-            if (e.getStatusCode().is5xxServerError()) {
-                return "Сервис временно недоступен. Попробуйте позже.";
+                    return new ResponseEntity<>(id.toString(), status);
+                } catch (IOException e) {
+                    throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to send file to processing queue");
+                }
             } else {
-                return "Произошла ошибка при отправке файла на другой сервис: " + e.getMessage();
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, (String) response.get("message"));
             }
-        } catch (RestClientException e) {
-            logger.error("RestClientException occurred: " + e.getMessage());
-            throw new RuntimeException("Не удалось отправить файл на другой сервис. Ошибка: " + e.getMessage());
-        }
+        });
     }
 
-    @PostMapping("/result")
+
+    @GetMapping("/result/{id}")
+    @CrossOrigin(origins = "http://localhost:5173")
     @ResponseBody
-    public ResponseEntity<Map<String, Object>> getResult(@RequestParam Map<String, String> queryParams) {
-
-        logger.info("Запрос на getResult получен"+queryParams);
-
-        String url = "http://localhost:5173/Fresult";
-
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
-        for (Map.Entry<String, String> entry : queryParams.entrySet()) {
-            builder.queryParam(entry.getKey(), entry.getValue());
+    @Async
+    public  CompletableFuture<ResponseEntity<Map<String, Double>>> getResult(@PathVariable String id) {
+        if (id == null || id.isEmpty()) {
+            // Если id пустой, вернуть соответствующую ошибку
+            Map<String, Double> errorResult = new HashMap<>();
+            errorResult.put("error", 400.0);
+            return CompletableFuture.completedFuture(new ResponseEntity<>(errorResult, HttpStatus.BAD_REQUEST));
         }
+        try {
+            Integer intId = Integer.parseInt(id);
+            Map<String, Double> result = storageService.getResult(intId);
 
-
-        ResponseEntity<Map<String, Object>> response =
-                restTemplate.exchange(builder.toUriString(), HttpMethod.GET, null,
-                new ParameterizedTypeReference<Map<String, Object>>() {
-                });
-
-        return response;
+            if (result == null) {
+                // Если результат еще не готов, возвращаем статус 100
+                result = new HashMap<>();
+                result.put("status", 100.0);
+                return CompletableFuture.completedFuture(new ResponseEntity<>(result, HttpStatus.CONTINUE));
+            } else {
+                return CompletableFuture.completedFuture(new ResponseEntity<>(result, HttpStatus.OK));
+            }
+        } catch (NumberFormatException e) {
+            // Если id не удалось преобразовать в Integer, вернуть соответствующую ошибку
+            Map<String, Double> errorResult = new HashMap<>();
+            errorResult.put("error", 400.0);
+            return CompletableFuture.completedFuture(new ResponseEntity<>(errorResult, HttpStatus.BAD_REQUEST));
+        }
     }
 
+    private Integer currentId = 0;
+
+    private synchronized Integer getNextId() {
+        currentId++;
+        return currentId;
+    }
 
     @ExceptionHandler(StorageFileNotFoundException.class)
     public ResponseEntity<?> handleStorageFileNotFound(StorageFileNotFoundException exc) {

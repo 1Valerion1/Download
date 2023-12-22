@@ -22,6 +22,7 @@ public class UploadingFilesApplication
     }
 
 
+
     @Bean
     CommandLineRunner init(StorageService storageService) {
         return (args) -> {

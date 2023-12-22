@@ -38,6 +38,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class FileSystemStorageService implements StorageService {
+    private Map<Integer, Map<String, Double>> resultMap = new HashMap<>();
 
     private final Path rootLocation;
 
@@ -170,5 +171,19 @@ public class FileSystemStorageService implements StorageService {
         catch (IOException e) {
             throw new StorageException("Could not initialize storage", e);
         }
+    }
+
+
+    @Override
+    public void save(Integer id, Map<String, Double> messageMap) {
+        resultMap.put(id, messageMap);
+    }
+
+    @Override
+    public Map<String, Double> getResult(Integer id) {
+
+        Map<String, Double> messageMap = resultMap.get(id);
+
+        return messageMap;
     }
 }

@@ -2,8 +2,12 @@ package org.download.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
+import org.download.services.FileSystemStorageService;
+import org.download.services.StorageService;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.connection.Connection;
 
@@ -20,12 +24,12 @@ import java.util.concurrent.TimeoutException;
 
 @Component
 public class RabbitMQConsumer {
-    @Autowired
-    private RestTemplate restTemplate;
+    private static final Logger logger = LoggerFactory.getLogger(RabbitMQConsumer.class);
 
     @Autowired
     private ConnectionFactory connectionFactory;
-
+    @Autowired
+    private  StorageService storageService;
     private String resultQueueName = "tdf_result";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -37,13 +41,24 @@ public class RabbitMQConsumer {
             channel.queueDeclare(resultQueueName, true, false, false, null);
 
             com.rabbitmq.client.DeliverCallback deliverCallback = (consumerTag, delivery) -> {
+                // Извлекаем id из заголовков сообщения
+                AMQP.BasicProperties properties = delivery.getProperties();
+                Map<String, Object> headers = properties.getHeaders();
+
+                Integer id = (Integer) headers.get("id");
+
+                // Получаем тело сообщения
                 byte[] messageBody = delivery.getBody();
                 Map<String, Double> messageMap = convertMessageToMap(messageBody);
-                sendToFrontend(messageMap);
+
+                logger.info("Данные переданы на сохранение id: " + id + ": " + messageMap);
+
+                storageService.save(id,messageMap);
             };
 
             channel.basicConsume(resultQueueName, true, deliverCallback, consumerTag -> {});
         } catch (IOException | TimeoutException e) {
+            logger.error("An error occurred while consuming messages from the result queue", e);
             e.printStackTrace();
         }
     }
@@ -54,16 +69,10 @@ public class RabbitMQConsumer {
             return objectMapper.readValue(jsonString, new TypeReference<Map<String, Double>>() {});
         } catch (IOException e) {
             e.printStackTrace();
+            logger.error("Error occurred while converting message to map", e);
             return Collections.emptyMap();
         }
     }
 
-    private void sendToFrontend(Map<String, Double> messageMap) {
-        try {
-            String url = "http://localhost:8089/result";
-            restTemplate.postForObject(url, messageMap, Map.class);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
+
 }

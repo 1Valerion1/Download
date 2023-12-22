@@ -24,7 +24,7 @@ public class RabbitMQPublisher {
 
     private final String QUEUE_NAME = "file_queue";
 
-    public void sendFileToQueue(byte[] fileData, String fileName) {
+    public void sendFileToQueue(Integer id ,byte[] fileData, String fileName) {
         try (Connection connection = connectionFactory.createConnection();
              Channel channel = connection.createChannel(false)) {
 
@@ -33,6 +33,7 @@ public class RabbitMQPublisher {
                     .contentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
                     .contentEncoding("UTF-8")
                     .headers(Collections.singletonMap("file_name", fileName))
+                    .headers(Collections.singletonMap("id", id))
                     .build();
 
             // Определяем долговечность и тип очереди

@@ -1,7 +1,9 @@
 package org.download.config;
 
 
+import jakarta.servlet.Filter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Bean;
 
 @ConfigurationProperties("storage")
 public class StorageProperties {

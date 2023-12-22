@@ -1,5 +1,6 @@
 package org.download.config;
 
+import jakarta.servlet.Filter;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -41,4 +42,5 @@ public class RabbitMQConfiguration {
     public RestTemplate restTemplate() {
         return new RestTemplate();
     }
+
 }

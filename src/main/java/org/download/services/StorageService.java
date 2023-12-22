@@ -12,6 +12,11 @@ public interface StorageService {
 
     void init();
 
+    void save(Integer id, Map<String, Double> messageMap);
+
+    public Map<String, Double> getResult(Integer id);
+
+
     void store(MultipartFile file);
 
     Stream<Path> loadAll();
