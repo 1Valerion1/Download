@@ -1,11 +1,14 @@
 org\download\controller\FileUploadController.class
 org\download\exception\StorageException.class
-org\download\model\TagRating.class
 org\download\UploadingFilesApplication.class
+org\download\rabbit\RabbitMQConsumer.class
 org\download\config\StorageProperties.class
+org\download\rabbit\RabbitMQConsumer$1.class
 org\download\services\StorageService.class
 org\download\exception\InvalidFileException.class
-org\download\config\WebConfig.class
-org\download\controller\FileUploadController$1.class
+org\download\config\RabbitMQConfiguration.class
+org\download\config\CorsConfig.class
+org\download\config\CustomCorsFilter.class
+org\download\rabbit\RabbitMQPublisher.class
 org\download\exception\StorageFileNotFoundException.class
 org\download\services\FileSystemStorageService.class

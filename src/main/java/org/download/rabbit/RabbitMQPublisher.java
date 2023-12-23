@@ -1,4 +1,4 @@
-package org.download.controller;
+package org.download.rabbit;
 
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;

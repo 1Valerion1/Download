@@ -10,6 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.download.exception.InvalidFileException;
+import org.download.rabbit.RabbitMQConsumer;
+import org.download.rabbit.RabbitMQPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +26,6 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import org.download.exception.StorageFileNotFoundException;
 import org.download.services.StorageService;
@@ -64,7 +65,6 @@ public class FileUploadController {
         return "uploadForm";
     }
 
-    @CrossOrigin(origins = "http://localhost:5173")
     @Async
     @PostMapping("/analyse")
     public CompletableFuture<ResponseEntity<String>> handleFileUpload(@RequestParam("file") MultipartFile file) {
@@ -92,10 +92,9 @@ public class FileUploadController {
 
 
     @GetMapping("/result/{id}")
-    @CrossOrigin(origins = "http://localhost:5173")
     @ResponseBody
     @Async
-    public  CompletableFuture<ResponseEntity<Map<String, Double>>> getResult(@PathVariable String id) {
+    public CompletableFuture<ResponseEntity<Map<String, Double>>> getResult(@PathVariable String id) {
         if (id == null || id.isEmpty()) {
             // Если id пустой, вернуть соответствующую ошибку
             Map<String, Double> errorResult = new HashMap<>();
@@ -107,12 +106,20 @@ public class FileUploadController {
             Map<String, Double> result = storageService.getResult(intId);
 
             if (result == null) {
-                // Если результат еще не готов, возвращаем статус 100
+                // Если результат еще не готов, возвращаем статус 202
                 result = new HashMap<>();
-                result.put("status", 100.0);
-                return CompletableFuture.completedFuture(new ResponseEntity<>(result, HttpStatus.CONTINUE));
+                result.put("status", 202.0);
+                return CompletableFuture.completedFuture(new ResponseEntity<>(result, HttpStatus.ACCEPTED));
             } else {
-                return CompletableFuture.completedFuture(new ResponseEntity<>(result, HttpStatus.OK));
+                // Проверяем, что результат уже существует и содержит данные
+                if (!result.isEmpty()) {
+                    return CompletableFuture.completedFuture(new ResponseEntity<>(result, HttpStatus.OK));
+                } else {
+                    // Если результат пуст, возвращаем ошибку
+                    Map<String, Double> emptyResultError = new HashMap<>();
+                    emptyResultError.put("error", 404.0);
+                    return CompletableFuture.completedFuture(new ResponseEntity<>(emptyResultError, HttpStatus.NOT_FOUND));
+                }
             }
         } catch (NumberFormatException e) {
             // Если id не удалось преобразовать в Integer, вернуть соответствующую ошибку

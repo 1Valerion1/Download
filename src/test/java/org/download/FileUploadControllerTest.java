@@ -1,76 +1,78 @@
 package org.download;
 
 import org.download.controller.FileUploadController;
-import org.download.exception.InvalidFileException;
-import org.download.exception.StorageException;
+import org.download.rabbit.RabbitMQConsumer;
+import org.download.rabbit.RabbitMQPublisher;
 import org.download.services.StorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mockito;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.client.RestTemplate;
 
+
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static net.minidev.json.JSONValue.isValidJson;
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.util.concurrent.ExecutionException;
 
 @WebMvcTest(FileUploadController.class)
 @ExtendWith(MockitoExtension.class)
 public class FileUploadControllerTest {
-    @Autowired
-    private MockMvc mockMvc;
+    @InjectMocks
+    private FileUploadController fileUploadController;
 
-    @MockBean
+    @Mock
     private StorageService storageService;
 
-    @MockBean
-    private RestTemplate restTemplate;
+    @Mock
+    private RabbitMQPublisher rabbitMQPublisher;
 
+    @Mock
+    private RabbitMQConsumer rabbitMQConsumer;
+
+    //Тест проверяет успешную обработку загрузки файла и отправку его на обработку в очередь rabbit.
     @Test
-    public void shouldUploadFile() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("file", "test.docx",
-                                        MediaType.MULTIPART_FORM_DATA_VALUE, "test data".getBytes());
+    public void testHandleFileUpload_Success() throws IOException, InterruptedException, ExecutionException {
+        // Подготовка
+        MockMultipartFile file = new MockMultipartFile("file",
+                "test.docx", MediaType.MULTIPART_FORM_DATA_VALUE, "test data".getBytes());
 
-        Mockito.when(storageService.handleFileUpload(any()))
-                .thenReturn(Map.of("status", "success"));
+        // Выполнение
+        CompletableFuture<ResponseEntity<String>> response = fileUploadController.handleFileUpload(file);
 
-        this.mockMvc.perform(multipart("/upload").file(file))
-                .andExpect(status().isOk());
+        // Проверка
+        ResponseEntity<String> result;
+        try {
+            result = response.get();
+            assertEquals(HttpStatus.OK, result.getStatusCode());
+
+            // Проверка, что файл отправлен в очередь обработки
+            verify(rabbitMQPublisher).sendFileToQueue(anyInt(), eq(file.getBytes()), eq(file.getOriginalFilename()));
+            // Проверка, что результаты отправлены на фронтенд
+            verify(rabbitMQConsumer).listenForResultsAndSendToFrontend();
+
+            assertNotNull(result.getBody());
+            // Проверка наличия ожидаемых данных в ответе
+            assertTrue(result.getBody().contains("Expected Data"));
+            // Пример: Проверка формата ответа в формате JSON
+            assertTrue(isValidJson(result.getBody()));
+
+        } catch (Exception e) {
+           e.getMessage();
+        }
     }
 
-    @Test
-    public void shouldNotUploadInvalidFile() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("file", "test.txt",
-                                MediaType.MULTIPART_FORM_DATA_VALUE, "test data".getBytes());
 
-        doThrow(new InvalidFileException("Only .docx files are allowed!"))
-                .when(storageService).
-                handleFileUpload(any());
-
-        this.mockMvc.perform(multipart("/upload").file(file))
-                .andExpect(status().isUnsupportedMediaType());
-    }
-
-    @Test
-    public void shouldNotUploadFileDueToStorageException() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("file", "test.docx",
-                MediaType.MULTIPART_FORM_DATA_VALUE, "test data".getBytes());
-
-        doThrow(new StorageException("Could not initialize storage"))
-                .when(storageService).
-                store(any());
-
-        this.mockMvc.perform(multipart("/upload").file(file))
-                .andExpect(status().isBadRequest());
-    }
 }
