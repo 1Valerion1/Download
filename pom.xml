@@ -31,6 +31,18 @@
       <version>4.11</version>
       <scope>test</scope>
     </dependency>
+
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi</artifactId>
+      <version>5.2.4</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>5.2.4</version>
+    </dependency>
+
     <!-- https://mvnrepository.com/artifact/org.mockito/mockito-core -->
     <dependency>
       <groupId>org.mockito</groupId>
@@ -133,19 +145,21 @@
   <build>
     <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
       <plugins>
-
-<!--          <plugin>-->
-<!--            <groupId>org.apache.maven.plugins</groupId>-->
-<!--            <artifactId>maven-war-plugin</artifactId>-->
-<!--            <version>3.3.1</version>-->
-<!--          </plugin>-->
         <plugin>
           <groupId>org.springframework.boot</groupId>
           <artifactId>spring-boot-maven-plugin</artifactId>
+          <version>${spring.version}</version>
+          <executions>
+            <execution>
+            <goals>
+              <goal>repackage</goal>
+           </goals>
           <configuration>
             <mainClass>org.download.UploadingFilesApplication</mainClass>
-            <layout>JAR</layout>
+            <layout>jar</layout>
           </configuration>
+             </execution>
+          </executions>
         </plugin>
         <!-- clean lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#clean_Lifecycle -->
         <plugin>

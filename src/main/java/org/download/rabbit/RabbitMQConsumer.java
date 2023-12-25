@@ -42,6 +42,7 @@ public class RabbitMQConsumer {
                 AMQP.BasicProperties properties = delivery.getProperties();
                 Map<String, Object> headers = properties.getHeaders();
 
+
                 Integer id = (Integer) headers.get("id");
 
                 // Получаем тело сообщения
@@ -63,7 +64,12 @@ public class RabbitMQConsumer {
     private Map<String, Double> convertMessageToMap(byte[] messageBody) {
         try {
             String jsonString = new String(messageBody, StandardCharsets.UTF_8);
-            return objectMapper.readValue(jsonString, new TypeReference<Map<String, Double>>() {});
+            Map<String, Double> messageMap = objectMapper.readValue(jsonString, new TypeReference<Map<String, Double>>() {});
+
+            // Фильтр для исключения значений равных 0 из карты
+            messageMap.entrySet().removeIf(entry -> Math.abs(entry.getValue() - 0.0) < 0.0001);
+
+            return messageMap;
         } catch (IOException e) {
             e.printStackTrace();
             logger.error("Error occurred while converting message to map", e);

@@ -21,3 +21,10 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
 
+  python_model:
+    image: python:latest
+    deploy:
+      replicas: 3  # количество реплик, которые вы хотите запустить
+    ports:
+      - "89:89"  # пример порта, который используется моделью
+
